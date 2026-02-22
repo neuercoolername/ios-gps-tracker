@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Alert, Platform } from 'react-native';
-import Geolocation from '@react-native-community/geolocation';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import * as Location from 'expo-location';
+
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
+const API_KEY = process.env.EXPO_PUBLIC_API_KEY;
 
 interface LocationData {
     latitude: number;
@@ -11,114 +14,127 @@ interface LocationData {
 
 
 const LocationTracker = () => {
-  const [location, setLocation] = useState(null);
+  const [location, setLocation] = useState<LocationData | null>(null);
   const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
 
-  const configureLocation = () => {
-    Geolocation.setRNConfiguration({
-      skipPermissionRequests: false,
-      authorizationLevel: 'always',
-    });
-  };
-
-  // Request permissions
-//   const requestLocationPermission = async (): Promise<void> => {
-//     try {
-//       if (Platform.OS === 'ios') {
-//         const auth = await Geolocation.requestAuthorization('always');
-//         if (auth === 'granted') {
-//           startLocationTracking();
-//         }
-//       }
-//     } catch (err) {
-//       setError('Failed to get location permission');
-//     }
-//   };
-
-const getLocationOnce = () => {
-  const result = Geolocation.getCurrentPosition((position)=>{
-    
-  })
-}
-
-  // Start tracking location
-  const startLocationTracking = () => {
-    // Watch position with continuous updates
-    const watchId = Geolocation.watchPosition(
-      position => {
-        const locationData = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          timestamp: position.timestamp,
-        };
-        
-        // setLocation(locationData);
-        sendLocationToBackend(locationData);
-      },
-      error => {
-        setError('Error getting location: ' + error.message);
-      },
-      {
-        enableHighAccuracy: true,
-        distanceFilter: 10, // Update every 10 meters
-        interval: 5000, // Update every 5 seconds
-        fastestInterval: 2000, // Fastest possible update interval
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Location permission denied');
       }
-    );
+    })();
+  }, []);
 
-    // Clean up function to stop tracking when component unmounts
-    return () => Geolocation.clearWatch(watchId);
+  // Continuous tracking (commented out for now — using manual trigger instead)
+  // const startLocationTracking = async () => {
+  //   const subscription = await Location.watchPositionAsync(
+  //     {
+  //       accuracy: Location.Accuracy.High,
+  //       distanceInterval: 10,
+  //       timeInterval: 5000,
+  //     },
+  //     (position) => {
+  //       const locationData: LocationData = {
+  //         latitude: position.coords.latitude,
+  //         longitude: position.coords.longitude,
+  //         accuracy: position.coords.accuracy ?? 0,
+  //         timestamp: position.timestamp,
+  //       };
+  //       setLocation(locationData);
+  //       sendLocationToBackend(locationData);
+  //     }
+  //   );
+  //   return () => subscription.remove();
+  // };
+
+  // Manual single location fetch + send
+  const trackOnce = async () => {
+    setSending(true);
+    setError("");
+    try {
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const locationData: LocationData = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy ?? 0,
+        timestamp: position.timestamp,
+      };
+      setLocation(locationData);
+      await sendLocationToBackend(locationData);
+    } catch (err: any) {
+      setError('Error getting location: ' + err.message);
+    } finally {
+      setSending(false);
+    }
   };
 
   // Send location data to backend
   const sendLocationToBackend = async (locationData: LocationData) => {
-    console.log(locationData)
-    // try {
-    //   const response = await fetch('YOUR_BACKEND_URL/location', {
-    //     method: 'POST',
-    //     headers: {
-    //       'Content-Type': 'application/json',
-    //       // Add any authentication headers here
-    //     },
-    //     body: JSON.stringify(locationData),
-    //   });
+    console.log('Location update:', locationData);
+    try {
+      const response = await fetch(`${API_BASE_URL}/location`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`,
+        },
+        body: JSON.stringify({
+          lat: locationData.latitude,
+          lon: locationData.longitude,
+          timestamp: locationData.timestamp,
+        }),
+      });
 
-    //   if (!response.ok) {
-    //     throw new Error('Failed to send location data');
-    //   }
-    // } catch (err) {
-    //   console.error('Error sending location:', err);
-    //   // Implement retry logic or error handling as needed
-    // }
+      if (!response.ok) {
+        throw new Error('Failed to send location data');
+      }
+    } catch (err) {
+      console.error('Error sending location:', err);
+    }
   };
 
-  useEffect(() => {
-    configureLocation();
-    // requestLocationPermission();
-
-    // Clean up when component unmounts
-    return () => {
-      Geolocation.stopObserving();
-    };
-  }, []);
-
   return (
-    <View style={{ padding: 20 }}>
+    <View style={styles.container}>
+      <TouchableOpacity
+        style={[styles.button, sending && styles.buttonDisabled]}
+        onPress={trackOnce}
+        disabled={sending}
+      >
+        <Text style={styles.buttonText}>
+          {sending ? 'Sending...' : 'Track Location'}
+        </Text>
+      </TouchableOpacity>
+
       {error ? (
-        <Text style={{ color: 'red' }}>{error}</Text>
+        <Text style={styles.error}>{error}</Text>
       ) : location ? (
-        <View>
+        <View style={styles.info}>
           <Text>Latitude: {location.latitude}</Text>
           <Text>Longitude: {location.longitude}</Text>
           <Text>Accuracy: {location.accuracy}m</Text>
           <Text>Last Updated: {new Date(location.timestamp).toLocaleString()}</Text>
         </View>
-      ) : (
-        <Text>Getting location...</Text>
-      )}
+      ) : null}
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: { padding: 20, paddingTop: 60 },
+  button: {
+    backgroundColor: '#007AFF',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  buttonDisabled: { opacity: 0.5 },
+  buttonText: { color: '#fff', fontSize: 18, fontWeight: '600' },
+  error: { color: 'red', marginTop: 16 },
+  info: { marginTop: 16, gap: 4 },
+});
 
 export default LocationTracker;
