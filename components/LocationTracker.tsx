@@ -17,6 +17,7 @@ const LocationTracker = () => {
   const [location, setLocation] = useState<LocationData | null>(null);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
+  const [backendResponse, setBackendResponse] = useState<{ status: string; message: string; locationId?: string } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -89,9 +90,8 @@ const LocationTracker = () => {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to send location data');
-      }
+      const json = await response.json();
+      setBackendResponse(json);
     } catch (err) {
       console.error('Error sending location:', err);
     }
@@ -111,13 +111,22 @@ const LocationTracker = () => {
 
       {error ? (
         <Text style={styles.error}>{error}</Text>
-      ) : location ? (
+      ) : null}
+
+      {location ? (
         <View style={styles.info}>
           <Text>Latitude: {location.latitude}</Text>
           <Text>Longitude: {location.longitude}</Text>
           <Text>Accuracy: {location.accuracy}m</Text>
           <Text>Last Updated: {new Date(location.timestamp).toLocaleString()}</Text>
         </View>
+      ) : null}
+
+      {backendResponse ? (
+        <Text style={backendResponse.status === 'ok' ? styles.success : styles.error}>
+          {backendResponse.message}
+          {backendResponse.locationId ? ` (id: ${backendResponse.locationId})` : ''}
+        </Text>
       ) : null}
     </View>
   );
@@ -134,6 +143,7 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: '#fff', fontSize: 18, fontWeight: '600' },
   error: { color: 'red', marginTop: 16 },
+  success: { color: 'green', marginTop: 16 },
   info: { marginTop: 16, gap: 4 },
 });
 
