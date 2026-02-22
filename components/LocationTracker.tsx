@@ -12,12 +12,18 @@ interface LocationData {
     timestamp: number;
 }
 
+interface BackendResponse {
+    status: 'ok' | 'error';
+    message: string;
+    locationId?: string;
+}
+
 
 const LocationTracker = () => {
   const [location, setLocation] = useState<LocationData | null>(null);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
-  const [backendResponse, setBackendResponse] = useState<{ status: string; message: string; locationId?: string } | null>(null);
+  const [backendResponse, setBackendResponse] = useState<BackendResponse | null>(null);
 
   useEffect(() => {
     (async () => {
